@@ -111,7 +111,7 @@ public class MatrixTransformation : MonoBehaviour
         // SCALE Y
         ScaleY(1f, 1.5f, 1.5f, InitialWaitTime);
         ScaleY(1.5f, 1f, 1.5f, 0.5f);
-
+        
         ////////////////////////////////////////////////////////////
         // SHEAR X
         ShearX(0, -0.5f, 1f, InitialWaitTime);
@@ -121,7 +121,7 @@ public class MatrixTransformation : MonoBehaviour
         ShearY(0, -0.5f, 1f, InitialWaitTime);
         ShearY(-0.5f, 0.5f, 2f, 0);
         ShearY(0.5f, 0, 1f, 0);
-
+        
         ////////////////////////////////////////////////////////////
         // REFLECT ACROSS Y
         ScaleX(1f, -1f, 1.5f, InitialWaitTime);
@@ -129,14 +129,14 @@ public class MatrixTransformation : MonoBehaviour
         // REFLECT ACROSS X
         ScaleY(1f, -1f, 1.5f, InitialWaitTime);
         ScaleY(-1f, 1f, 1.5f, 0.5f);
-
+        
         ////////////////////////////////////////////////////////////
         // ROTATION BY SHEAR (to 0.5)
         ShearX(0, -0.5f, 1.5f, InitialWaitTime);
         ShearY(0, 0.5f, 1.5f, 1);
         ShearX(-0.5f, 0, 0.5f, 1);
         ShearY(0.5f, 0, 0.5f, -0.5f); // set iniWaitTime to -0.5 to start concurrently with ShearX
-
+        
         //(to 1.5)
         ShearX(0, -1f, 1.5f, InitialWaitTime);
         ShearY(0, 1f, 1.5f, 1);
@@ -163,6 +163,7 @@ public class MatrixTransformation : MonoBehaviour
     {
         // MoveCamera();
         UseAnimationCurve();
+        TransformMesh();
     }
 
     /// <summary>
@@ -513,9 +514,10 @@ public class MatrixTransformation : MonoBehaviour
     private void SetText(TMP_InputField field, float value, string usingRotation)
     {
         field.pointSize = 13;
-        value = Abs(value - 0) <= 0.005f ? 0 : value;
+        // If value is close to 0 or 1, set respectively
+        value = Abs(value - 0) <= 0.005f ? 0 : value; 
         value = Abs(value - 1) <= 0.005f ? 1 : value;
-
+        
         if (field.name == "angle") angle = value;
         switch (field.name)
         {
@@ -533,36 +535,35 @@ public class MatrixTransformation : MonoBehaviour
                 break;
         }
 
+        string textDisplay = $"{value:0.0}";  // value to display (1 decimal)
         if (usingRotation == "none")
         {
-            field.text = $"{value:0.0000}";
-            field.text = $"{value:0.00}";
+            field.text = textDisplay;
         }
         else
         {
-            var formattedAngle = $"{angle / 3.14f:0.0}" + "\u03C0";
+            var formattedAngle = $"{angle / 3.14f:0.0}" + "\u03C0"; // radians (1 decimal) + pi symbol
             switch (field.name)
             {
                 case "x0":
-                    field.text = $"{angle / 3.14f:0.00}" + "\u03C0";
                     field.text = usingRotation == "both" || usingRotation == "cos"
                         ? "cos(" + formattedAngle + ")"
-                        : $"{value:0.00}";
+                        : textDisplay;
                     break;
                 case "x1":
                     field.text = usingRotation == "both" || usingRotation == "sin"
                         ? "sin(" + formattedAngle + ")"
-                        : $"{value:0.00}";
+                        : textDisplay;
                     break;
                 case "y0":
                     field.text = usingRotation == "both" || usingRotation == "sin"
                         ? "-sin(" + formattedAngle + ")"
-                        : $"{value:0.00}";
+                        : textDisplay;
                     break;
                 case "y1":
                     field.text = usingRotation == "both" || usingRotation == "cos"
                         ? "cos(" + formattedAngle + ")"
-                        : $"{value:0.00}";
+                        : textDisplay;
                     break;
             }
         }
