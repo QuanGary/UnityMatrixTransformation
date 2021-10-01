@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Http.Headers;
+using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -37,8 +39,8 @@ public class MatrixTransformation : MonoBehaviour
     private bool _animationPlaying;
     private float _animationTime;
     private float _maxAnimationTime;
-    private Queue<RotationInterval> _rotationIntervals; // store the intervals that are using rotation
-    private Queue<RotationInterval> _rotationIntervalsCopy;
+    private LinkedList<TransformInterval> _transformIntervals; // store the intervals that are using rotation
+    private LinkedList<TransformInterval> _transformIntervalsCopy;
 
     private Mesh _mesh;
     private Vector3[] _vertices;
@@ -53,7 +55,7 @@ public class MatrixTransformation : MonoBehaviour
 
     // Constants
     private const int InitialWaitTime = 2;
-
+    private const string PiSymbol = "\u03C0";
 
     // Start is called before the first frame update
     void Start()
@@ -64,8 +66,8 @@ public class MatrixTransformation : MonoBehaviour
         curveY1 = new AnimationCurve();
         _curves = new List<AnimationCurve> { curveX0, curveX1, curveY0, curveY1 }; // If more curves, add them here
 
-        _rotationIntervals = new Queue<RotationInterval>();
-        _rotationIntervalsCopy = new Queue<RotationInterval>();
+        _transformIntervals = new LinkedList<TransformInterval>();
+        _transformIntervalsCopy = new LinkedList<TransformInterval>();
         SetText(inputX0, 1, "none");
         SetText(inputX1, 0, "none");
         SetText(inputY0, 0, "none");
@@ -89,7 +91,10 @@ public class MatrixTransformation : MonoBehaviour
 
 
         CreateAnimationCurves(); // Create animation curves on start
+
+        _transformIntervals = MergeRotationIntervals();
     }
+    
 
     /// <summary>
     /// Create keyframes for the 4 curves (x0,x1,y0,y1) which are the values
@@ -129,8 +134,8 @@ public class MatrixTransformation : MonoBehaviour
         // REFLECT ACROSS X
         ScaleY(1f, -1f, 1.5f, InitialWaitTime);
         ScaleY(-1f, 1f, 1.5f, 0.5f);
-        
-        ////////////////////////////////////////////////////////////
+        //
+        // ////////////////////////////////////////////////////////////
         // ROTATION BY SHEAR (to 0.5)
         ShearX(0, -0.5f, 1.5f, InitialWaitTime);
         ShearY(0, 0.5f, 1.5f, 1);
@@ -146,15 +151,17 @@ public class MatrixTransformation : MonoBehaviour
 
         ////////////////////////////////////////////////////////////
         // SIN AND COS XFORMS
-        SinTransform(0, 0.7854f, 2f, InitialWaitTime);
-        SinTransform(0.7854f, 0, 2f, 0);
+        SinTransform(0, 0.7854f, 1.5f, InitialWaitTime);
+        SinTransform(0.7854f, 0, 1.5f, 0);
+        SinTransform(0, 0.7854f, 1.5f, 0);
+        SinTransform(0.7854f, 0, 1.5f, 0);
 
-        CosTransform(0, 0.7854f, 2f, InitialWaitTime);
-        CosTransform(0.7854f, 0, 2f, 0);
-
+        CosTransform(0, 0.7854f, 2, InitialWaitTime);
+        CosTransform(0.7854f, 0, 2, 0);
+        
         ////////////////////////////////////////////////////////////
         // FULL ROTATION 0->2PI
-        Rotation(0, 6.28f, 5, InitialWaitTime);
+        Rotation(0, 6.28f, 3, InitialWaitTime);
     }
 
 
@@ -178,7 +185,7 @@ public class MatrixTransformation : MonoBehaviour
             _animationTime = 0f;
             _maxAnimationTime =
                 GetLastKeyTime(); // Get max animation time by getting the time of the last key from all curves
-            _rotationIntervalsCopy = new Queue<RotationInterval>(_rotationIntervals);
+            _transformIntervalsCopy = new LinkedList<TransformInterval>(_transformIntervals);
         }
 
         if (!_animationPlaying) return;
@@ -194,16 +201,16 @@ public class MatrixTransformation : MonoBehaviour
 
 
         var usingRotation = "none";
-        if (_rotationIntervalsCopy.Count > 0)
+        if (_transformIntervalsCopy.Count > 0)
         {
-            RotationInterval rt = _rotationIntervalsCopy.Peek();
-            if (_animationTime <= rt.EndTime)
+            TransformInterval interval = _transformIntervalsCopy.First.Value;
+            if (_animationTime <= interval.EndTime)
             {
-                usingRotation = _animationTime >= rt.StartTime ? rt.Type : "none";
+                usingRotation = _animationTime >= interval.StartTime ? interval.RotationType : "none";
             }
             else
             {
-                _rotationIntervalsCopy.Dequeue();
+                _transformIntervalsCopy.RemoveFirst();
             }
         }
 
@@ -229,7 +236,10 @@ public class MatrixTransformation : MonoBehaviour
 
         curveX0.AddKey(startTime, startX);
         curveX0.AddKey(endTime, endX);
-        SetCurveLinear(curveX0);
+        SetCurveLinear(curveX0, startTime, endTime);
+
+        TransformInterval interval = new TransformInterval(startTime, endTime, "none");
+        _transformIntervals.AddLast(interval);
     }
 
     /// Scale the 2D face vertically (by modifying y1)
@@ -246,7 +256,10 @@ public class MatrixTransformation : MonoBehaviour
 
         curveY1.AddKey(startTime, startY);
         curveY1.AddKey(endTime, endY);
-        SetCurveLinear(curveY1);
+        SetCurveLinear(curveY1, startTime, endTime);
+
+        TransformInterval interval = new TransformInterval(startTime, endTime, "none");
+        _transformIntervals.AddLast(interval);
     }
 
     /// Shear the 2D face horizontally (by modifying y0)
@@ -263,7 +276,10 @@ public class MatrixTransformation : MonoBehaviour
 
         curveY0.AddKey(startTime, startX);
         curveY0.AddKey(endTime, endX);
-        SetCurveLinear(curveY0);
+        SetCurveLinear(curveY0, startTime, endTime);
+
+        TransformInterval interval = new TransformInterval(startTime, endTime, "none");
+        _transformIntervals.AddLast(interval);
     }
 
     /// Shear the 2D face vertically (by modifying x1)
@@ -280,7 +296,10 @@ public class MatrixTransformation : MonoBehaviour
 
         curveX1.AddKey(startTime, startY);
         curveX1.AddKey(endTime, endY);
-        SetCurveLinear(curveX1);
+        SetCurveLinear(curveX1, startTime, endTime);
+
+        TransformInterval interval = new TransformInterval(startTime, endTime, "none");
+        _transformIntervals.AddLast(interval);
     }
 
     /// Apply Sine transformation about an angle(by modifying x1 and y0)
@@ -304,8 +323,9 @@ public class MatrixTransformation : MonoBehaviour
         curveAngle.AddKey(endTime, toRadAngle);
 
 
-        RotationInterval rt = new RotationInterval(startTime, endTime, "sin");
-        _rotationIntervals.Enqueue(rt);
+        TransformInterval interval = new TransformInterval(startTime, endTime, "sin");
+        RemoveDuplicateIntervals(interval);
+        _transformIntervals.AddLast(interval);
     }
 
     /// Apply Cosine transformation about an angle (by modifying x0 and y1)
@@ -329,8 +349,9 @@ public class MatrixTransformation : MonoBehaviour
         curveAngle.AddKey(startTime, fromRadAngle);
         curveAngle.AddKey(endTime, toRadAngle);
 
-        RotationInterval rt = new RotationInterval(startTime, endTime, "cos");
-        _rotationIntervals.Enqueue(rt);
+        TransformInterval interval = new TransformInterval(startTime, endTime, "cos");
+        RemoveDuplicateIntervals(interval);
+        _transformIntervals.AddLast(interval);
     }
 
     /// Apply full rotation around angle (in radians)
@@ -359,10 +380,7 @@ public class MatrixTransformation : MonoBehaviour
         curveY0.AddKey(startTime, -sinFromAngle);
         curveY1.AddKey(startTime, cosFromAngle);
         curveAngle.AddKey(startTime, fromRadAngle);
-        SmoothCurve(curveX0);
-        SmoothCurve(curveX1);
-        SmoothCurve(curveY0);
-        SmoothCurve(curveY1);
+  
 
         for (int i = 1; i <= 20; i++)
         {
@@ -377,7 +395,7 @@ public class MatrixTransformation : MonoBehaviour
             if (smallAngleRadians < 0) smallAngleRadians += 6.28f;
             curveAngle.AddKey(time, smallAngleRadians);
         }
-
+        
         curveX0.AddKey(endTime, cosToAngle);
         curveX1.AddKey(endTime, sinToAngle);
         curveY0.AddKey(endTime, -sinToAngle);
@@ -386,15 +404,29 @@ public class MatrixTransformation : MonoBehaviour
         if (angleRadian < 0) angleRadian += 6.28f;
         curveAngle.AddKey(endTime, angleRadian);
 
-        SmoothRotationCurve(curveX0);
-        SmoothRotationCurve(curveX1);
-        SmoothRotationCurve(curveY0);
-        SmoothRotationCurve(curveY1);
-        SetCurveLinear(curveAngle);
+        
+        var afterEnd = endTime + 1f;
+        curveX0.AddKey(afterEnd, cosToAngle);
+        curveX1.AddKey(afterEnd, sinToAngle);
+        curveY0.AddKey(afterEnd, -sinToAngle);
+        curveY1.AddKey(afterEnd, cosToAngle);
+        curveAngle.AddKey(afterEnd, angleRadian);
 
-        RotationInterval rt = new RotationInterval(startTime, endTime, "both");
-        _rotationIntervals.Enqueue(rt);
+        SetCurveLinear(curveX0, 0, startTime);
+        SetCurveLinear(curveX1, 0, startTime);
+        SetCurveLinear(curveY0, 0, startTime);
+        SetCurveLinear(curveY1, 0, startTime);
+        SetCurveLinear(curveX0, endTime, afterEnd);
+        SetCurveLinear(curveX1, endTime, afterEnd);
+        SetCurveLinear(curveY0, endTime, afterEnd);
+        SetCurveLinear(curveY1, endTime, afterEnd);
+        SetCurveLinear(curveAngle, 0, afterEnd);
+
+        TransformInterval interval = new TransformInterval(startTime, afterEnd, "both");
+        RemoveDuplicateIntervals(interval);
+        _transformIntervals.AddLast(interval);
     }
+
 
     // private void Reflect(float toX, float toY, int duration)
     // {
@@ -515,9 +547,9 @@ public class MatrixTransformation : MonoBehaviour
     {
         field.pointSize = 13;
         // If value is close to 0 or 1, set respectively
-        value = Abs(value - 0) <= 0.005f ? 0 : value; 
+        value = Abs(value - 0) <= 0.005f ? 0 : value;
         value = Abs(value - 1) <= 0.005f ? 1 : value;
-        
+
         if (field.name == "angle") angle = value;
         switch (field.name)
         {
@@ -535,14 +567,14 @@ public class MatrixTransformation : MonoBehaviour
                 break;
         }
 
-        string textDisplay = $"{value:0.0}";  // value to display (1 decimal)
+        string textDisplay = $"{value:0.0}"; // value to display (1 decimal)
         if (usingRotation == "none")
         {
             field.text = textDisplay;
         }
         else
         {
-            var formattedAngle = $"{angle / 3.14f:0.0}" + "\u03C0"; // radians (1 decimal) + pi symbol
+            var formattedAngle = $"{Math.Round(angle, 2) / 3.14f:0.0}" + PiSymbol; // radians (1 decimal) + pi symbol
             switch (field.name)
             {
                 case "x0":
@@ -569,13 +601,17 @@ public class MatrixTransformation : MonoBehaviour
         }
     }
 
-    private static void SmoothCurve(AnimationCurve curve)
+    private static void SmoothRotationCurve(AnimationCurve curve, float startTime, float endTime)
     {
         for (int i = 0; i < curve.length; i++)
         {
+            if (curve[i].time < startTime || curve[i].time > endTime)
+            {
+                continue;
+            } 
             Keyframe k = curve[i];
-            k.inTangent = 0f;
             k.outTangent = 0f;
+            k.inTangent = 0f;
             curve.MoveKey(i, k);
         }
     }
@@ -595,10 +631,12 @@ public class MatrixTransformation : MonoBehaviour
         curve.MoveKey(curve.length - 1, k);
     }
 
-    private static void SetCurveLinear(AnimationCurve curve)
+    private static void SetCurveLinear(AnimationCurve curve, float startTime, float endTime)
     {
+        
         for (int i = 0; i < curve.keys.Length; ++i)
         {
+            if (curve[i].time < startTime || curve[i].time > endTime) continue;
             float inTangent = 0;
             float outTangent = 0;
             bool inTangentSet = false;
@@ -649,6 +687,60 @@ public class MatrixTransformation : MonoBehaviour
             curve.MoveKey(i, key);
         }
     }
+    
+    // Merge rotation intervals in the list
+    private LinkedList<TransformInterval> MergeRotationIntervals()
+    {
+        List<TransformInterval> curList = new List<TransformInterval>(_transformIntervals);
+        List<TransformInterval> mergedList = new List<TransformInterval>();
+
+        for (int i = 0; i < curList.Count; i++)
+        {
+            int lastIdxMergeList = mergedList.Count - 1;
+            // last element in list is Rotation, merge
+            if (mergedList.Count > 0 && curList[i].RotationType != "none" &&
+                mergedList[lastIdxMergeList].RotationType != "none")
+            {
+                TransformInterval lastRotationInterval = mergedList[lastIdxMergeList];
+
+                if (curList[i].RotationType == mergedList[lastIdxMergeList].RotationType)
+                {
+                    float newEndTime = Max(mergedList[lastIdxMergeList].EndTime, curList[i].EndTime);
+                    lastRotationInterval.EndTime = newEndTime;
+                    mergedList.RemoveAt(lastIdxMergeList);
+                    mergedList.Add(lastRotationInterval);
+                }
+                else
+                {
+                    float newEndTime = curList[i].StartTime;
+                    lastRotationInterval.EndTime = newEndTime;
+                    mergedList.RemoveAt(lastIdxMergeList);
+                    mergedList.Add(lastRotationInterval);
+                    mergedList.Add(curList[i]);
+                }
+            }
+            else
+            {
+                mergedList.Add(curList[i]);
+            }
+        }
+
+        return new LinkedList<TransformInterval>(mergedList);
+    }
+
+    // Remove the previous duplicate intervals with the same [startTime,endTime]
+    // since the current interval is using rotation
+    private void RemoveDuplicateIntervals(TransformInterval interval)
+    {
+        while (_transformIntervals.Count > 0 &&
+               Math.Abs(_transformIntervals.Last.Value.StartTime - interval.StartTime) < float.Epsilon)
+        {
+            if (_transformIntervals.Last.Value.RotationType == "none")
+            {
+                _transformIntervals.RemoveLast();
+            }
+        }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////
     /// STRUCTS 
@@ -665,17 +757,17 @@ public class MatrixTransformation : MonoBehaviour
         }
     }
 
-    readonly struct RotationInterval
+    struct TransformInterval
     {
         public float StartTime { get; }
-        public float EndTime { get; }
-        public string Type { get; } // both sin and cos or not?
+        public float EndTime { get; set; }
+        public string RotationType { get; } // rotation or not?
 
-        public RotationInterval(float start, float end, string type)
+        public TransformInterval(float start, float end, string type)
         {
             StartTime = start;
             EndTime = end;
-            Type = type;
+            RotationType = type;
         }
     }
 }
